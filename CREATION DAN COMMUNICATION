@@ -1,0 +1,44 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <string.h>
+
+int pipefd[2]; // Array untuk menyimpan file descriptor pipe
+pid_t pid;
+char buffer[50];
+  
+// Membuat pipe untuk komunikasi antara proses induk dan anak
+if (pipe(pipefd) == -1) {
+    perror("Pipe gagal");
+    exit(EXIT_FAILURE);
+}
+
+// Membuat proses anak menggunakan fork()
+pid = fork();
+  
+if (pid < 0) {
+    perror("Fork gagal");
+    exit(EXIT_FAILURE);
+}
+if (pid > 0) { // Proses induk
+    close(pipefd[1]); // Menutup ujung tulis pipe
+    printf("Proses induk: PID = %d, PID anak = %d\n", getpid(), pid);
+    read(pipefd[0], buffer, sizeof(buffer)); // Membaca pesan dari anak
+    printf("Induk: Menerima pesan dari anak: %s\n", buffer);
+    wait(NULL); // Menunggu proses anak selesai
+    printf("Induk: Proses anak telah selesai.\n");
+    close(pipefd[0]); // Menutup ujung baca pipe
+}
+
+else { // Proses anak
+    close(pipefd[0]); // Menutup ujung baca pipe
+    printf("Proses anak: PID = %d, PID induk = %d\n", getpid(), getppid());
+    char message[] = "Halo dari anak!";
+    write(pipefd[1], message, strlen(message) + 1); // Mengirim pesan ke induk
+    printf("Anak: Mengirim pesan ke induk: %s\n", message);
+    close(pipefd[1]); // Menutup ujung tulis pipe
+}
+
+return 0;
