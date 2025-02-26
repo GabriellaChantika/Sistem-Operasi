@@ -1,0 +1,92 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <string.h>
+
+#define BUFFER_SIZE 100
+
+int pipefd1[2], pipefd2[2]; // Pipe untuk komunikasi dua arah
+pid_t pid;
+char buffer[BUFFER_SIZE];
+
+// Fungsi untuk mengirim pesan melalui pipe
+void send_message(int write_fd, const char *message) {
+    write(write_fd, message, strlen(message) + 1);
+}
+
+// Fungsi untuk membaca pesan dari pipe
+void read_message(int read_fd, char *buffer) {
+    memset(buffer, 0, BUFFER_SIZE); // Bersihkan buffer
+    ssize_t bytes_read = read(read_fd, buffer, BUFFER_SIZE - 1);
+    if (bytes_read <= 0) {
+        strcpy(buffer, "exit"); // Jika error, gunakan "exit" untuk keluar
+    }
+}
+
+// Fungsi untuk menghapus newline dari input
+void remove_newline(char *str) {
+    size_t len = strlen(str);
+    if (len > 0 && str[len - 1] == '\n') {
+        str[len - 1] = '\0';
+    }
+}
+
+int main() {
+    if (pipe(pipefd1) == -1 || pipe(pipefd2) == -1) {
+        perror("Pipe gagal");
+        exit(EXIT_FAILURE);
+    }
+
+    pid = fork();
+
+    if (pid < 0) {
+        perror("Fork gagal");
+        exit(EXIT_FAILURE);
+    }
+
+    if (pid > 0) { // Proses induk
+        close(pipefd1[1]); // Tutup ujung tulis pipe1
+        close(pipefd2[0]); // Tutup ujung baca pipe2
+
+        printf("Proses induk: PID = %d, PID anak = %d\n", getpid(), pid);
+
+        while (1) {
+            read_message(pipefd1[0], buffer);
+            printf("Induk menerima: %s\n", buffer);
+            if (strcmp(buffer, "exit") == 0) break;
+
+            printf("Induk kirim pesan: ");
+            if (fgets(buffer, BUFFER_SIZE, stdin) == NULL) break;
+            remove_newline(buffer);
+            send_message(pipefd2[1], buffer);
+        }
+
+        close(pipefd1[0]);
+        close(pipefd2[1]);
+        wait(NULL);
+        printf("Proses anak selesai.\n");
+    } else { // Proses anak
+        close(pipefd1[0]); // Tutup ujung baca pipe1
+        close(pipefd2[1]); // Tutup ujung tulis pipe2
+
+        printf("Proses anak: PID = %d, PID induk = %d\n", getpid(), getppid());
+
+        while (1) {
+            printf("Anak kirim pesan: ");
+            if (fgets(buffer, BUFFER_SIZE, stdin) == NULL) break;
+            remove_newline(buffer);
+            send_message(pipefd1[1], buffer);
+            if (strcmp(buffer, "exit") == 0) break;
+
+            read_message(pipefd2[0], buffer);
+            printf("Anak menerima: %s\n", buffer);
+        }
+
+        close(pipefd1[1]);
+        close(pipefd2[0]);
+    }
+
+    return 0;
+}
